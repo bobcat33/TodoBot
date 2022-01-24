@@ -8,21 +8,32 @@ const client = new Discord.Client({ intents: ["GUILDS", "GUILD_MESSAGES", "DIREC
 
 const { prefix,
     dbHost, dbUser, dbPass, dbName, tableName,
-    errorColour, warnColour, cancelColour, successColour,
+    errorColour, warnColour, cancelColour, successColour, helpColour,
     maxTitleLength, maxDescriptionLength,
     token } = require("./config.json");
 
 const commands = {
+    help: {
+        name: "Help Command",
+        command: "help",
+        description: "Get help with commands.",
+        usage: `${prefix}help`,
+        help: `${prefix}help <command>`,
+        aliases: []
+    },
     init: {
         name: "Setup Command",
         command: "init",
+        description: "Set up the To-Do list database.",
         usage: `${prefix}init`,
         help: `\`${prefix}init\`: Set up the todo list database.`,
         aliases: ["setup"]
     },
     todo: {
+        // TODO - Implement
         name: "Todo Command",
         command: "todo",
+        description: "List all To-Dos or specify one to view.",
         usage: ``,
         help: ``,
         aliases: ["list"]
@@ -30,9 +41,19 @@ const commands = {
     add: {
         name: "Add Item Command",
         command: "add",
-        usage: `${prefix}add`,
-        help: `\`${prefix}add\`: Add an item to your todo list.`,
+        description: "Add an item to your To-Do list",
+        usage: `${prefix}add <to-do>`,
+        help: `In the below commands the value for \`date\` must be either of the format "\`YYYY-MM-DD\`" or "\`YYYY-MM-DD HH:MM:SS\`"\n\n\*\*Commands:\*\*\n\`${prefix}add <title>\`: Add an item to your To-Do list with just a title.\n\`${prefix}add "<title>" <date>\`: Add an item to your To-Do list with both a title and a date (optional).\n\`${prefix}add "<title>" "<description>" <date>\`: Add an item to your To-Do list with a title, a description and a date (optional).`,
         aliases: ["create"]
+    },
+    remove: {
+        // TODO - Implement
+        name: "Remove Item Command",
+        command: "remove",
+        description: "Remove an item from your To-Do list",
+        usage: `${prefix}remove`,
+        help: `\`${prefix}remove\`: Remove an item from your To-Do list.`,
+        aliases: ["delete"]
     }
 }
 
@@ -53,15 +74,15 @@ const SQL = {
 
 
 
-// Functions
+// General Functions
 
 // Parse the arguments from a command
-function getArgs(string, numargs, includecommand) {
-	includecommand = (typeof includecommand === 'undefined') ? false : includecommand;
+function getArgs(string, numargs, includeCommand) {
+	includeCommand = (typeof includeCommand === 'undefined') ? false : includeCommand;
 	numargs = (numargs <= 0) ? numargs : numargs-1;
 
 	var baseargs = string.split(" ");
-	if (!includecommand)
+	if (!includeCommand)
 		baseargs.splice(0, 1);
 
 	var args = [];
@@ -80,6 +101,46 @@ function getArgs(string, numargs, includecommand) {
 	return args;
 }
 
+// Parse the string for arguments wrapped by "", if includeNonString is true anything left over after removing the string arguments will be included in the return value.
+function getStringArgs(string, includeNonString) {
+	includeNonString = (typeof includeNonString === 'undefined') ? true : includeNonString;
+
+    var startIndex = -2;
+    var endIndex = -1;
+    var args = [];
+    var nonString = string;
+    var nonStringIndexModifier = 0;
+
+    for (var i=0;i < string.length;i++) {
+        // Skip over escaped " characters
+        if (string.charAt(i) === "\\" && string.charAt(i + 1) === '"') {
+            i++;
+        } else if (string.charAt(i) === '"') {
+            if (startIndex < endIndex)
+                startIndex = i;
+            else {
+                endIndex = i;
+                args.push(string.substring(startIndex + 1, endIndex).replaceAll('\\"', '"'));
+                if (includeNonString) {
+                    nonString = nonString.substring(0, startIndex - nonStringIndexModifier) + nonString.substring(endIndex + 1 - nonStringIndexModifier);
+                    nonStringIndexModifier += endIndex + 1 - startIndex;
+                }
+            }
+        }
+    }
+
+    if (includeNonString) {
+        var response = {
+            stringArgs: args,
+            extraArgs: nonString.replaceAll('\\"', '"').trim()
+        };
+        return response;
+    }
+    
+    return args;
+
+}
+
 // Test if string is a command
 function isCommand(commandName) {
     for (const possibleCommand in commands) {
@@ -89,10 +150,9 @@ function isCommand(commandName) {
     return false;
 }
 
-// TODO - This command is for testing - delete when finished
 function getCommand(alias) {
     for (const possibleCommand in commands) {
-        if (isAliasOf(commands[possibleCommand], alias)) return commands[possibleCommand].command;
+        if (isAliasOf(commands[possibleCommand], alias)) return possibleCommand;
     }
     return "";
 }
@@ -160,6 +220,7 @@ async function sendButtonEmbed(message, embed, reply, allowOnlySender, ...button
 }
 
 
+// Query Functions
 
 // Query a specific connection with one or more queries
 async function queryConnection(connection, singleQuery, extraQueries) {
@@ -296,6 +357,7 @@ function checkQueryErrors(queryResponses, message) {
 }
 
 
+
 // Log when the client connects
 client.once('ready', () => {
     console.log("Ready!");
@@ -318,22 +380,48 @@ client.on('messageCreate', async msg => {
 		console.log(`\n${msg.author.username}:\n${msg.content}`);
 	}
 
-	const lowerContent = msg.content.toLowerCase();
-
-    if (!lowerContent.startsWith(prefix)) return;
+    if (!msg.content.toLowerCase().startsWith(prefix)) return;
 
 
     // Check command exists
 
-    const command = getArgs(lowerContent.substring(prefix.length), 2, true);
+    const command = getArgs(msg.content.substring(prefix.length), 2, true);
+
+    command[0] = command[0].toLowerCase();
+
 
     if (!isCommand(command[0])) return;
 
 
     // Command handling
 
+    // Process the help command first
+    if (isCommandFor(commands.help, command[0]) || isAliasOf(commands.help, command[0])) {
+        var helpContent = `Use "\`${commands.help.help}\`" to get help with one of the commands below:\n`;
+        for (var cmd in commands) if (cmd !== 'help') helpContent += `\n\*\*${commands[cmd].command}\*\*\n${commands[cmd].description}\n`;
+
+        const helpEmbed = cmd => {
+            if (cmd === 'help' || isAliasOf(commands.help, cmd)) return quickembed("Help", helpContent, helpColour);
+            else if (typeof commands[cmd] === 'undefined') {
+                var cmd = getCommand(cmd);
+                if (cmd !== "") return quickembed(commands[cmd].name, commands[cmd].help, helpColour);
+                return quickembed("Error - Invalid Help Command", helpContent, errorColour);
+            }
+            return quickembed(commands[cmd].name, commands[cmd].help, helpColour);
+        };
+
+
+        if (command.length === 1) {
+            channelEmbed(msg.channel, quickembed("Help", helpContent, helpColour));
+        }
+        else {
+            channelEmbed(msg.channel, helpEmbed(command[1].toLowerCase()));
+        }
+        return;
+    }
+
     // Process the init command
-    if (isCommandFor(commands.init, command[0]) || isAliasOf(commands.init, command[0])) {
+    else if (isCommandFor(commands.init, command[0]) || isAliasOf(commands.init, command[0])) {
         
         var existing = await serverQuery(SQL.checkDatabaseExists);
 
@@ -447,12 +535,50 @@ client.on('messageCreate', async msg => {
 
     }
     else if (isCommandFor(commands.add, command[0]) || isAliasOf(commands.add, command[0])) {
+        const helpEmbed = quickembed("Error - Invalid Command", `Invalid ${command[0]} command, use \`${prefix}${commands.help.command} ${command[0]}\` for help with this command.`, errorColour);
+        // TODO - format time to epoch and include as "Complete by <t:EPOCH_TIME> (<t:EPOCH_TIME:R>)" using new Date(time).getTime() to get epoch
+        const successEmbed = (title, description, time) => quickembed("To-Do Created!", `Created the To-Do below:\n\n\*\*${title}\*\*${(typeof description === 'undefined' || description === "") ? "" : `\n${description}`}${(typeof time === 'undefined') ? "" : `\n\nComplete by ${time}`}`, successColour);
 
-        const response = await databaseQuery(SQL.addTodo(msg.author.id, "Test Todo", "I have to do a thing lol"));
+        if (command.length != 2) {
+            replyEmbed(msg, helpEmbed);
+        }
 
-        if (checkQueryErrors(response, msg)) return;
+        const args = getStringArgs(command[1]);
 
-        console.log(response);
+        // Accept the command "-add Title" without the need for quotes if the user doesn't need a description or a date
+        if (args.stringArgs.length === 0) {
+            if (args.extraArgs === "") {
+                replyEmbed(msg, helpEmbed);
+                return;
+            }
+            var response = await databaseQuery(SQL.addTodo(msg.author.id, args.extraArgs, ""));
+            if (checkQueryErrors(response, msg)) return;
+
+            channelEmbed(msg.channel, successEmbed(args.extraArgs));
+        }
+
+        else if (args.stringArgs.length <= 2) {
+            const description = (args.stringArgs.length === 2) ? args.stringArgs[1] : "";
+            var response;
+            if (args.extraArgs === "") {
+                response = await databaseQuery(SQL.addTodo(msg.author.id, args.stringArgs[0], description));
+                if (checkQueryErrors(response, msg)) return;
+                channelEmbed(msg.channel, successEmbed(args.stringArgs[0], description));
+            } else {
+                // TODO - Format time + time handling (if person enters hh:mm:ss only then it takes it as a date without providing errors, need to pretent this)
+                response = await databaseQuery(SQL.addTodo(msg.author.id, args.stringArgs[0], description, args.extraArgs));
+                if (checkQueryErrors(response)) {
+                    if (response.code === "ER_TRUNCATED_WRONG_VALUE") replyEmbed(msg, quickembed("Error - Invalid Date", `The date "\`${args.extraArgs}\`" is invalid, date must be of the form "\`YYYY-MM-DD HH:MM:SS\`"`, errorColour));
+                    else checkQueryErrors(response, msg);
+                    return;
+                }
+                channelEmbed(msg.channel, successEmbed(args.stringArgs[0], description, args.extraArgs));
+            }
+        }
+
+        else {
+            replyEmbed(msg, helpEmbed);
+        }
     }
 
 });
