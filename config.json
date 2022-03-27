@@ -1,0 +1,28 @@
+{
+    "prefix":"-",
+    "admins":[],
+
+    "dbHost":"",
+    "dbPort":"",
+    "dbUser":"",
+    "dbPass":"",
+    "dbName":"todo",
+    "tableName":"todo",
+
+    "defaultColour":"#34495E",
+    "errorColour":"#FF0000",
+    "warnColour":"#FF7700",
+    "cancelColour":"#666666",
+    "successColour":"#00FF00",
+    "helpColour":"#008080",
+    "todoBasicColour":"#c542f5",
+    "todoCompleteColour":"#00AA00",
+    "todoUncompleteColour":"#666666",
+    "todoCreatedColour":"#00FF00",
+    "todoRemovedColour":"#111111",
+
+    "maxTitleLength":"100",
+    "maxDescriptionLength":"400",
+
+    "token":""
+}
